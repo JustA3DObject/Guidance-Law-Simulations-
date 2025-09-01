@@ -82,7 +82,7 @@ fprintf('Simulations complete. Plotting results...\n');
 % Plot Comparison Results
 plot_comparison(T_LOS, Y_LOS, T_carrot, Y_carrot, T_NLG, Y_NLG, T_TPN, Y_TPN, T_RTPN, Y_RTPN, target, start, params_carrot);
 
-% Figure 5: Relative Velocities
+% Figure 4: Relative Velocities
 figure('Name', 'Relative Velocities', 'Position', [100, 100, 1200, 900]);
 
 % Velocity components for each guidance law
@@ -151,7 +151,7 @@ ylabel('V_y (m/s)');
 title('Y Component of Relative Velocity');
 legend;
 
-% Figure 6: Range Rate (rdot) to Target
+% Figure 5: Range Rate (rdot) to Target
 figure('Name', 'Range Rate (rdot)', 'Position', [100, 100, 1200, 600]);
 
 % Helper function for rdot calculation
