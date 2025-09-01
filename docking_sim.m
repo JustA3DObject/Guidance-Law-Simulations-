@@ -157,6 +157,41 @@ ylabel('V_y (m/s)');
 title('Y Component of Relative Velocity');
 legend;
 
+% Figure 6: Range Rate (rdot) to Target
+figure('Name', 'Range Rate (rdot)', 'Position', [100, 100, 1200, 600]);
+
+% Helper function for rdot calculation
+% This function calculates the range rate (rdot) using vectorized operations.
+% rdot is the projection of the AUV's velocity onto the line-of-sight to the target.
+calculate_rdot = @(Y, target_pos) ...
+    -( ...
+      ((target_pos(1) - Y(:,1)) .* (Y(:,3) .* cos(Y(:,4)))) + ...
+      ((target_pos(2) - Y(:,2)) .* (Y(:,3) .* sin(Y(:,4)))) ...
+    ) ./ sqrt((target_pos(1) - Y(:,1)).^2 + (target_pos(2) - Y(:,2)).^2);
+
+% rdot for each guidance law
+rdot_LOS = calculate_rdot(Y_LOS, target);
+rdot_carrot = calculate_rdot(Y_carrot, target);
+rdot_NLG = calculate_rdot(Y_NLG, target);
+rdot_TPN = calculate_rdot(Y_TPN, target);
+rdot_RTPN = calculate_rdot(Y_RTPN, target);
+
+% Plot the results
+hold on;
+plot(T_LOS, rdot_LOS, 'r-', 'LineWidth', 1.5, 'DisplayName', 'LOS');
+plot(T_carrot, rdot_carrot, 'g-', 'LineWidth', 1.5, 'DisplayName', 'Carrot');
+plot(T_NLG, rdot_NLG, 'Color', [0.8500 0.3250 0.0980], 'LineWidth', 1.5, 'DisplayName', 'NLG');
+plot(T_TPN, rdot_TPN, 'Color', [0.4940 0.1840 0.5560], 'LineWidth', 1.5, 'DisplayName', 'TPN');
+plot(T_RTPN, rdot_RTPN, 'Color', [0.9290 0.6940 0.1250], 'LineWidth', 1.5, 'DisplayName', 'RTPN');
+hold off;
+
+grid on;
+xlabel('Time (s)');
+ylabel('Range Rate (m/s)');
+title('Range Rate (Closing Velocity) to Target');
+legend('Location', 'southeast');
+yline(0, 'k--', 'DisplayName', 'Zero Closing Velocity');
+
 % Event Function for Docking
 % Stops simulation when AUV reaches docking radius
 function [value, isterminal, direction] = docking_events(~, y, target, docking_radius)
@@ -380,11 +415,6 @@ function plot_comparison(T_LOS, Y_LOS, T_carrot, Y_carrot, T_NLG, Y_NLG, T_TPN, 
     x_NLG = Y_NLG(:,1); y_NLG = Y_NLG(:,2); s_NLG = Y_NLG(:,3); psi_NLG = Y_NLG(:,4);
     x_TPN = Y_TPN(:,1); y_TPN = Y_TPN(:,2); s_TPN = Y_TPN(:,3); psi_TPN = Y_TPN(:,4);
     x_RTPN = Y_RTPN(:,1); y_RTPN = Y_RTPN(:,2); s_RTPN = Y_RTPN(:,3); psi_RTPN = Y_RTPN(:,4);
-    
-
-
-
-
 
     % Figure 1: Trajectory Comparison
     figure('Name', 'Trajectory Comparison', 'Position', [100, 100, 800, 600]);
@@ -411,11 +441,6 @@ function plot_comparison(T_LOS, Y_LOS, T_carrot, Y_carrot, T_NLG, Y_NLG, T_TPN, 
     xlabel('X (m)'); ylabel('Y (m)');
     title('AUV Trajectory Comparison');
     legend('Location', 'best');
-    
-
-
-
-
 
     % Figure 2: Performance Metrics Comparison
     figure('Name', 'Performance Metrics Comparison', 'Position', [950, 100, 800, 700]);
@@ -497,11 +522,6 @@ function plot_comparison(T_LOS, Y_LOS, T_carrot, Y_carrot, T_NLG, Y_NLG, T_TPN, 
     
     % Add overall title to the figure
     sgtitle('AUV Guidance: Core Performance Metrics', 'FontSize', 14, 'FontWeight', 'bold');
-    
-
-
-
-
 
     % Figure 3: Speed and Efficiency Metrics
     figure('Name', 'Speed and Efficiency Metrics', 'Position', [100, 50, 900, 700]);
@@ -550,11 +570,6 @@ function plot_comparison(T_LOS, Y_LOS, T_carrot, Y_carrot, T_NLG, Y_NLG, T_TPN, 
     % Overall title to the figure
     sgtitle('AUV Guidance: Speed and Efficiency', 'FontSize', 14, 'FontWeight', 'bold');
     
-
-
-
-
-
     % Figure 4: Deceleration Performance Analysis
     figure('Name', 'Deceleration Performance Analysis', 'Position', [950, 50, 900, 400]);
     
