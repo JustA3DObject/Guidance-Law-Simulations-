@@ -86,7 +86,8 @@ fprintf('Simulations complete. Plotting results...\n');
 % Plot Comparison Results
 plot_comparison(T_LOS, Y_LOS, T_carrot, Y_carrot, T_NLG, Y_NLG, T_TPN, Y_TPN, T_RTPN, Y_RTPN, target, start, params_carrot);
 
-% Figure 4: Relative Velocities
+% Figure 5: Relative Velocities
+
 figure('Name', 'Relative Velocities', 'Position', [100, 100, 1200, 900]);
 
 % Velocity components for each guidance law
@@ -151,7 +152,7 @@ ylabel('V_y (m/s)');
 title('Y Component of Relative Velocity');
 legend;
 
-% Figure 5: Range Rate (rdot) to Target
+% Figure 6: Range Rate (rdot) to Target
 figure('Name', 'Range Rate (rdot)', 'Position', [100, 100, 1200, 600]);
 
 % Helper function for rdot calculation
@@ -248,7 +249,7 @@ function dydt = auv_model_log_poly_decel(t, y, params)
         b = params.poly_b;
         c = params.poly_c;
 
-        % Normalization constant 
+        % Normalization constant
         n_norm = 1 + a + b + c;
 
         % Calculate the polynomial term
@@ -403,7 +404,6 @@ end
 
 % Plotting and Helper Functions
 function plot_comparison(T_LOS, Y_LOS, T_carrot, Y_carrot, T_NLG, Y_NLG, T_TPN, Y_TPN, T_RTPN, Y_RTPN, target, start, params_carrot)
-
     % Extract parameters
     docking_radius = params_carrot.docking_radius;
     lw = 1.5; % Line width for plots
@@ -419,7 +419,11 @@ function plot_comparison(T_LOS, Y_LOS, T_carrot, Y_carrot, T_NLG, Y_NLG, T_TPN, 
     x_NLG = Y_NLG(:,1); y_NLG = Y_NLG(:,2); s_NLG = Y_NLG(:,3); psi_NLG = Y_NLG(:,4);
     x_TPN = Y_TPN(:,1); y_TPN = Y_TPN(:,2); s_TPN = Y_TPN(:,3); psi_TPN = Y_TPN(:,4);
     x_RTPN = Y_RTPN(:,1); y_RTPN = Y_RTPN(:,2); s_RTPN = Y_RTPN(:,3); psi_RTPN = Y_RTPN(:,4);
-
+    
+    % Create categorical array for guidance methods
+    labels = categorical({'LOS', 'Carrot', 'NLG', 'TPN', 'RTPN'});
+    labels = reordercats(labels, {'LOS', 'Carrot', 'NLG', 'TPN', 'RTPN'});
+    
     % Figure 1: Trajectory Comparison
     figure('Name', 'Trajectory Comparison', 'Position', [100, 100, 800, 600]);
     hold on;
@@ -532,10 +536,6 @@ function plot_comparison(T_LOS, Y_LOS, T_carrot, Y_carrot, T_NLG, Y_NLG, T_TPN, 
     % Figure 3: Speed and Efficiency Metrics
     figure('Name', 'Speed and Efficiency Metrics', 'Position', [100, 50, 900, 700]);
     
-    % Create categorical array for guidance methods
-    labels = categorical({'LOS', 'Carrot', 'NLG', 'TPN', 'RTPN'});
-    labels = reordercats(labels, {'LOS', 'Carrot', 'NLG', 'TPN', 'RTPN'});
-    
     % Extract simulation end times and path lengths
     times = [T_LOS(end), T_carrot(end), T_NLG(end), T_TPN(end), T_RTPN(end)];
     path_lengths = [calculate_path_length(x_LOS, y_LOS), ...
@@ -577,6 +577,37 @@ function plot_comparison(T_LOS, Y_LOS, T_carrot, Y_carrot, T_NLG, Y_NLG, T_TPN, 
     % Overall title to the figure
     sgtitle('AUV Guidance: Speed and Efficiency', 'FontSize', 14, 'FontWeight', 'bold');
     
+    % Figure 4: Deceleration Performance Analysis
+    figure('Name', 'Final Approach Performance', 'Position', [950, 50, 600, 500]);
+    
+    % Final speeds and distances
+    final_speeds = [s_LOS(end), s_carrot(end), s_NLG(end), s_TPN(end), s_RTPN(end)];
+    final_distances = [dist_error_LOS(end), dist_error_carrot(end), dist_error_NLG(end), dist_error_TPN(end), dist_error_RTPN(end)];
+    
+    % Final approach performance (speed vs distance)
+    markers = {'o', 's', 'p', 'd', '^'}; % Different markers for each method
+    colors = {'r', 'g', nlg_color, tpn_color, rtpn_color}; % Colors for each method
+    
+    hold on;
+    for i = 1:length(labels)
+        plot(final_distances(i), final_speeds(i), ...
+            'Marker', markers{i}, ...
+            'MarkerEdgeColor', 'k', ...
+            'MarkerFaceColor', colors{i}, ...
+            'MarkerSize', 10, ...
+            'DisplayName', char(labels(i)));
+    end
+    hold off;
+    grid on;
+    title('Final Approach Performance');
+    xlabel('Final Distance to Target (m)');
+    ylabel('Final Speed (m/s)');
+    legend('show', 'Location', 'northeast');
+
+    % Reference line for docking radius
+    xline(docking_radius, 'k--', 'Target Radius');
+    sgtitle('AUV Guidance: Final Approach Analysis', 'FontSize', 14, 'FontWeight', 'bold');
+    
 end
 
 % Helper function: Wrap angle to [-π, π] range
@@ -616,3 +647,4 @@ function cross_track = calculate_cross_track(x_pos, y_pos, start, target)
         cross_track(i) = abs(dot(pos_vec, normal_vec));
     end
 end
+
