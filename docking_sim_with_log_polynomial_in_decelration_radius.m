@@ -17,12 +17,6 @@ accel_duration = 5; % Duration of the initial acceleration phase (s)
 % Calculate final cruise speed after acceleration phase
 cruise_speed = initial_v + initial_a * accel_duration;
 
-% Log-Polynomial (3-degree) Deceleration Parameters
-poly_a = 2.0; % Polynomial coefficient a
-poly_b = 2.0; % Polynomial coefficient b
-poly_c = 1.0; % Polynomial coefficient c
-initial_distance_ref = norm(start - target); % Reference distance for normalization
-
 % AUV and Controller Parameters
 % Heading PID Controller - controls the AUV's direction
 Kp = 1.5;      % Proportional gain - responds to current error
@@ -32,6 +26,7 @@ Kd = 0.03;     % Derivative gain - dampens oscillations
 % Guidance Parameters
 N_gain = 4.0;  % Proportional Navigation constant for TPN/RTPN guidance laws
 docking_radius = 5.0; % Radius for successful docking (m) - considered "docked" within this distance
+deceleration_radius = 40.0; % Radius at which to start decelerating (m)
 lookahead = 1.0; % Lookahead distance for Carrot Chase and NLG (m) - how far ahead to "look"
 K_nlg_p = 1.0;    % Proportional gain for the robust NLG heading controller
 
@@ -49,38 +44,39 @@ options = odeset('Events', @(t,y) docking_events(t, y, target, docking_radius));
 % Common parameters to be passed to the model
 common_params = struct('Kp', Kp, 'Ki', Ki, 'Kd', Kd, ...
                        'target', target, 'docking_radius', docking_radius, ...
+                       'deceleration_radius', deceleration_radius, ...
                        'cruise_speed', cruise_speed, ...
                        'start', start, 'lookahead', lookahead, ...
                        'initial_a', initial_a, 'accel_duration', accel_duration, ...
-                       'N_gain', N_gain, 'poly_a', poly_a, 'poly_b', poly_b, ...
-                       'poly_c', poly_c, 'initial_distance_ref', initial_distance_ref);
+                       'N_gain', N_gain);
 
 % Run simulations for each guidance algorithm
 fprintf('Running LOS Guidance Simulation...\n');
 params_LOS = common_params;
 params_LOS.guidance = 'LOS'; % Line-of-Sight guidance
 [T_LOS, Y_LOS] = ode45(@(t,y) auv_model_log_poly_decel(t, y, params_LOS), tspan, y0_full, options);
-fprintf('Running Carrot Chase Simulation...\n');
 
+fprintf('Running Carrot Chase Simulation...\n');
 params_carrot = common_params;
 params_carrot.guidance = 'carrot'; % Carrot Chase guidance
 [T_carrot, Y_carrot] = ode45(@(t,y) auv_model_log_poly_decel(t, y, params_carrot), tspan, y0_full, options);
-fprintf('Running Non-Linear Guidance (NLG) Simulation...\n');
 
+fprintf('Running Non-Linear Guidance (NLG) Simulation...\n');
 params_NLG = common_params;
 params_NLG.guidance = 'NLG'; % Non-Linear Guidance
 params_NLG.K_nlg_p = K_nlg_p;
 [T_NLG, Y_NLG] = ode45(@(t,y) auv_model_log_poly_decel(t, y, params_NLG), tspan, y0_full, options);
-fprintf('Running True Proportional Navigation (TPN) Simulation...\n');
 
+fprintf('Running True Proportional Navigation (TPN) Simulation...\n');
 params_TPN = common_params;
 params_TPN.guidance = 'TPN'; % True Proportional Navigation
 [T_TPN, Y_TPN] = ode45(@(t,y) auv_model_log_poly_decel(t, y, params_TPN), tspan, y0_full, options);
-fprintf('Running Realistic True Proportional Navigation (RTPN) Simulation...\n');
 
+fprintf('Running Realistic True Proportional Navigation (RTPN) Simulation...\n');
 params_RTPN = common_params;
 params_RTPN.guidance = 'RTPN'; % Realistic True Proportional Navigation
 [T_RTPN, Y_RTPN] = ode45(@(t,y) auv_model_log_poly_decel(t, y, params_RTPN), tspan, y0_full, options);
+
 fprintf('Simulations complete. Plotting results...\n');
 
 % Plot Comparison Results
@@ -93,15 +89,19 @@ figure('Name', 'Relative Velocities', 'Position', [100, 100, 1200, 900]);
 vx_LOS = Y_LOS(:,3) .* cos(Y_LOS(:,4));
 vy_LOS = Y_LOS(:,3) .* sin(Y_LOS(:,4));
 v_mag_LOS = sqrt(vx_LOS.^2 + vy_LOS.^2);
+
 vx_carrot = Y_carrot(:,3) .* cos(Y_carrot(:,4));
 vy_carrot = Y_carrot(:,3) .* sin(Y_carrot(:,4));
 v_mag_carrot = sqrt(vx_carrot.^2 + vy_carrot.^2);
+
 vx_NLG = Y_NLG(:,3) .* cos(Y_NLG(:,4));
 vy_NLG = Y_NLG(:,3) .* sin(Y_NLG(:,4));
 v_mag_NLG = sqrt(vx_NLG.^2 + vy_NLG.^2);
+
 vx_TPN = Y_TPN(:,3) .* cos(Y_TPN(:,4));
 vy_TPN = Y_TPN(:,3) .* sin(Y_TPN(:,4));
 v_mag_TPN = sqrt(vx_TPN.^2 + vy_TPN.^2);
+
 vx_RTPN = Y_RTPN(:,3) .* cos(Y_RTPN(:,4));
 vy_RTPN = Y_RTPN(:,3) .* sin(Y_RTPN(:,4));
 v_mag_RTPN = sqrt(vx_RTPN.^2 + vy_RTPN.^2);
@@ -151,16 +151,14 @@ ylabel('V_y (m/s)');
 title('Y Component of Relative Velocity');
 legend;
 
-% Figure 6: Range Rate (rdot) to Target
+% Figure 6: Range Rate (rdot) to Target 
 figure('Name', 'Range Rate (rdot)', 'Position', [100, 100, 1200, 600]);
-
 % Helper function for rdot calculation
 calculate_rdot = @(Y, target_pos) ...
     -( ...
       ((target_pos(1) - Y(:,1)) .* (Y(:,3) .* cos(Y(:,4)))) + ...
       ((target_pos(2) - Y(:,2)) .* (Y(:,3) .* sin(Y(:,4)))) ...
     ) ./ sqrt((target_pos(1) - Y(:,1)).^2 + (target_pos(2) - Y(:,2)).^2);
-
 % rdot for each guidance law
 rdot_LOS = calculate_rdot(Y_LOS, target);
 rdot_carrot = calculate_rdot(Y_carrot, target);
@@ -185,7 +183,6 @@ yline(0, 'k--', 'DisplayName', 'Zero Closing Velocity');
 
 % Event Function for Docking
 function [value, isterminal, direction] = docking_events(~, y, target, docking_radius)
-
     % Calculate distance to target
     dist_to_target = sqrt((y(1) - target(1))^2 + (y(2) - target(2))^2);
     value = dist_to_target - docking_radius; % Event occurs when this becomes zero
@@ -237,46 +234,21 @@ function dydt = auv_model_log_poly_decel(t, y, params)
     if t < params.accel_duration
         % Phase 1: Initial constant acceleration
         ds = params.initial_a;
+    elseif dist_to_target > params.deceleration_radius
+        % Phase 2: Cruising at constant speed
+        ds = 0;
     else
-        % Phase 2: Deceleration using 3-degree Log Polynomial Law
-        
-        % Normalize distance based on the initial reference distance
-        x_norm = dist_to_target / params.initial_distance_ref;
-        x_norm = max(0, min(1, x_norm)); % Clamp to [0, 1] for robustness
-
-        % Polynomial coefficients
-        a = params.poly_a;
-        b = params.poly_b;
-        c = params.poly_c;
-
-        % Normalization constant 
-        n_norm = 1 + a + b + c;
-
-        % Calculate the polynomial term
-        poly_term = 1 + a*x_norm + b*x_norm^2 + c*x_norm^3;
-        
-        % ROBUST IMPLEMENTATION
-        % The original formula `N^(log(poly)/log(n))` fails when N=1 and is not
-        % suitable for docking as it targets a final speed of 1 m/s, not 0.
-        % This adapted logic uses the log-polynomial term as a true speed
-        % scaling factor that smoothly transitions from 1 down to 0.
-        
-        if poly_term <= 0 || n_norm <= 1
-            speed_scale = 0; % Safety fallback for log domain errors
-        else
-            % This term correctly scales from 1 (at initial distance) to 0 (at target)
-            speed_scale = log(poly_term) / log(n_norm);
-        end
-        
-        % The desired speed is the cruise speed modulated by the scaling factor.
-        s_desired = params.cruise_speed * speed_scale;
-        
-        % If very close to the target, force speed to zero (this remains as a safety)
+        % Phase 3: Deceleration using Log Polynomial Law
         if dist_to_target <= params.docking_radius
-            s_desired = 0;
+            s_desired = 0; % Stop when within docking radius
+        else
+            % Log Polynomial Law: v = v0 * ((log(r) - log(rd)) / (log(r0) - log(rd)))^n
+            n = 2; % Polynomial exponent
+            term = (log(dist_to_target) - log(params.docking_radius)) / ...
+                   (log(params.deceleration_radius) - log(params.docking_radius));
+            s_desired = params.cruise_speed * max(0, term)^n;
         end
-
-        % Simple proportional control to achieve the desired speed
+        % Simple proportional control to achieve desired speed
         ds = 0.5 * (s_desired - s);
     end
     
@@ -404,9 +376,9 @@ end
 
 % Plotting and Helper Functions
 function plot_comparison(T_LOS, Y_LOS, T_carrot, Y_carrot, T_NLG, Y_NLG, T_TPN, Y_TPN, T_RTPN, Y_RTPN, target, start, params_carrot)
-
     % Extract parameters
     docking_radius = params_carrot.docking_radius;
+    deceleration_radius = params_carrot.deceleration_radius;
     lw = 1.5; % Line width for plots
     
     % Define colors for each guidance method
@@ -421,14 +393,10 @@ function plot_comparison(T_LOS, Y_LOS, T_carrot, Y_carrot, T_NLG, Y_NLG, T_TPN, 
     x_TPN = Y_TPN(:,1); y_TPN = Y_TPN(:,2); s_TPN = Y_TPN(:,3); psi_TPN = Y_TPN(:,4);
     x_RTPN = Y_RTPN(:,1); y_RTPN = Y_RTPN(:,2); s_RTPN = Y_RTPN(:,3); psi_RTPN = Y_RTPN(:,4);
     
-    % Create categorical array for guidance methods
-    labels = categorical({'LOS', 'Carrot', 'NLG', 'TPN', 'RTPN'});
-    labels = reordercats(labels, {'LOS', 'Carrot', 'NLG', 'TPN', 'RTPN'});
-    
     % Figure 1: Trajectory Comparison
     figure('Name', 'Trajectory Comparison', 'Position', [100, 100, 800, 600]);
     hold on;
-
+    
     % Plot trajectories for each guidance method
     plot(x_LOS, y_LOS, 'r-', 'LineWidth', lw, 'DisplayName', 'LOS');
     plot(x_carrot, y_carrot, 'g-', 'LineWidth', lw, 'DisplayName', 'Carrot');
@@ -441,16 +409,17 @@ function plot_comparison(T_LOS, Y_LOS, T_carrot, Y_carrot, T_NLG, Y_NLG, T_TPN, 
     plot(target(1), target(2), 'k*', 'MarkerSize', 15, 'LineWidth', 2, 'DisplayName', 'Target');
     plot(start(1), start(2), 'ko', 'MarkerSize', 10, 'LineWidth', 2, 'MarkerFaceColor', 'y', 'DisplayName', 'Start');
     
-    % Plot docking zone
+    % Plot docking and deceleration zones
     theta_circle = linspace(0, 2*pi, 100);
     plot(target(1) + docking_radius*cos(theta_circle), target(2) + docking_radius*sin(theta_circle), 'c--', 'LineWidth', 1.0, 'DisplayName', 'Docking Radius');
+    plot(target(1) + deceleration_radius*cos(theta_circle), target(2) + deceleration_radius*sin(theta_circle), '-.', 'Color', '#999900', 'LineWidth', 1.0, 'DisplayName', 'Decel. Zone');
     
     hold off;
     axis equal; grid on;
     xlabel('X (m)'); ylabel('Y (m)');
     title('AUV Trajectory Comparison');
     legend('Location', 'best');
-
+    
     % Figure 2: Performance Metrics Comparison
     figure('Name', 'Performance Metrics Comparison', 'Position', [950, 100, 800, 700]);
     
@@ -470,8 +439,9 @@ function plot_comparison(T_LOS, Y_LOS, T_carrot, Y_carrot, T_NLG, Y_NLG, T_TPN, 
     plot(T_TPN, dist_error_TPN, 'Color', tpn_color, 'LineWidth', lw);
     plot(T_RTPN, dist_error_RTPN, 'Color', rtpn_color, 'LineWidth', lw);
     
-    % Add reference lines for docking radius
+    % Add reference lines for docking and deceleration radii
     yline(docking_radius, 'c--', 'Docking Radius');
+    yline(deceleration_radius, 'y-.', 'Decel. Zone');
     
     hold off; grid on;
     xlabel('Time (s)'); ylabel('Distance (m)');
@@ -481,7 +451,6 @@ function plot_comparison(T_LOS, Y_LOS, T_carrot, Y_carrot, T_NLG, Y_NLG, T_TPN, 
     % Heading error comparison
     subplot(2,2,2);
     hold on;
-
     % Heading error for each method
     plot(T_LOS, rad2deg(wrapToPi(atan2(target(2) - y_LOS, target(1) - x_LOS) - psi_LOS)), 'r-', 'LineWidth', lw);
     
@@ -504,7 +473,6 @@ function plot_comparison(T_LOS, Y_LOS, T_carrot, Y_carrot, T_NLG, Y_NLG, T_TPN, 
     % Path following performance (cross-track error)
     subplot(2,2,3);
     hold on;
-
     % Cross-track error for each method
     plot(T_LOS, calculate_cross_track(x_LOS, y_LOS, start, target), 'r-', 'LineWidth', lw);
     plot(T_carrot, calculate_cross_track(x_carrot, y_carrot, start, target), 'g-', 'LineWidth', lw);
@@ -519,7 +487,6 @@ function plot_comparison(T_LOS, Y_LOS, T_carrot, Y_carrot, T_NLG, Y_NLG, T_TPN, 
     % Control effort (turn rate)
     subplot(2,2,4);
     hold on;
-
     % Turn rate for each method (derivative of heading)
     plot(T_LOS, rad2deg([0; diff(Y_LOS(:,4)) ./ diff(T_LOS)]), 'r-', 'LineWidth', lw);
     plot(T_carrot, rad2deg([0; diff(Y_carrot(:,4)) ./ diff(T_carrot)]), 'g-', 'LineWidth', lw);
@@ -533,9 +500,13 @@ function plot_comparison(T_LOS, Y_LOS, T_carrot, Y_carrot, T_NLG, Y_NLG, T_TPN, 
     
     % Add overall title to the figure
     sgtitle('AUV Guidance: Core Performance Metrics', 'FontSize', 14, 'FontWeight', 'bold');
-
+    
     % Figure 3: Speed and Efficiency Metrics
     figure('Name', 'Speed and Efficiency Metrics', 'Position', [100, 50, 900, 700]);
+    
+    % Create categorical array for guidance methods
+    labels = categorical({'LOS', 'Carrot', 'NLG', 'TPN', 'RTPN'});
+    labels = reordercats(labels, {'LOS', 'Carrot', 'NLG', 'TPN', 'RTPN'});
     
     % Extract simulation end times and path lengths
     times = [T_LOS(end), T_carrot(end), T_NLG(end), T_TPN(end), T_RTPN(end)];
@@ -579,13 +550,26 @@ function plot_comparison(T_LOS, Y_LOS, T_carrot, Y_carrot, T_NLG, Y_NLG, T_TPN, 
     sgtitle('AUV Guidance: Speed and Efficiency', 'FontSize', 14, 'FontWeight', 'bold');
     
     % Figure 4: Deceleration Performance Analysis
-    figure('Name', 'Final Approach Performance', 'Position', [950, 50, 600, 500]);
+    figure('Name', 'Deceleration Performance Analysis', 'Position', [950, 50, 900, 400]);
     
     % Final speeds and distances
     final_speeds = [s_LOS(end), s_carrot(end), s_NLG(end), s_TPN(end), s_RTPN(end)];
     final_distances = [dist_error_LOS(end), dist_error_carrot(end), dist_error_NLG(end), dist_error_TPN(end), dist_error_RTPN(end)];
     
+    % Find when deceleration starts for each method
+    all_dist_errors = {dist_error_LOS, dist_error_carrot, dist_error_NLG, dist_error_TPN, dist_error_RTPN};
+    all_times = {T_LOS, T_carrot, T_NLG, T_TPN, T_RTPN};
+    decel_start_times = NaN(1, 5); % Initialize with NaN
+    
+    for i = 1:5
+        idx = find(all_dist_errors{i} <= deceleration_radius, 1, 'first');
+        if ~isempty(idx)
+            decel_start_times(i) = all_times{i}(idx);
+        end
+    end
+    
     % Final approach performance (speed vs distance)
+    subplot(1, 2, 1);
     markers = {'o', 's', 'p', 'd', '^'}; % Different markers for each method
     colors = {'r', 'g', nlg_color, tpn_color, rtpn_color}; % Colors for each method
     
@@ -604,11 +588,26 @@ function plot_comparison(T_LOS, Y_LOS, T_carrot, Y_carrot, T_NLG, Y_NLG, T_TPN, 
     xlabel('Final Distance to Target (m)');
     ylabel('Final Speed (m/s)');
     legend('show', 'Location', 'northeast');
-
     % Reference line for docking radius
     xline(docking_radius, 'k--', 'Target Radius');
-    sgtitle('AUV Guidance: Final Approach Analysis', 'FontSize', 14, 'FontWeight', 'bold');
     
+    % Deceleration start time bar chart
+    subplot(1, 2, 2);
+    b_decel = bar(labels, decel_start_times);
+    grid on;
+    title('Deceleration Start Time');
+    ylabel('Time (s)');
+    
+    % Text labels only for valid (non-NaN) data points
+    valid_indices = ~isnan(decel_start_times);
+    if any(valid_indices)
+        text(b_decel.XEndPoints(valid_indices), b_decel.YEndPoints(valid_indices), ...
+             string(round(b_decel.YData(valid_indices), 1)), ...
+             'HorizontalAlignment','center', 'VerticalAlignment','bottom', 'Color', 'k');
+    end
+    
+    % Overall title to the figure
+    sgtitle('AUV Guidance: Deceleration Analysis', 'FontSize', 14, 'FontWeight', 'bold');
 end
 
 % Helper function: Wrap angle to [-π, π] range
@@ -622,7 +621,6 @@ function len = calculate_path_length(x_coords, y_coords)
         len = 0;
         return;
     end
-
     % Sum of distances between consecutive points
     len = sum(sqrt(diff(x_coords).^2 + diff(y_coords).^2));
 end
