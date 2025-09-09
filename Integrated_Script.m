@@ -1,4 +1,4 @@
-function auv_docking_simulation()
+function Integrated_Script()
     % Create user interface for parameter selection
     create_parameter_ui();
     
@@ -119,22 +119,24 @@ function run_simulation(decel_method, psi0, initial_v, initial_a, accel_duration
             
         case 'LogPoly with Radius'
             % Log Polynomial with deceleration radius parameters
-            deceleration_radius = 40.0; % Deceleration start radius (m)
+            % Using dynamic deceleration logic
+            max_deceleration = 1.5; % Maximum comfortable deceleration rate (m/s^2)
+            deceleration_factor = 1.2; % Tuning factor: >1 starts deceleration earlier, <1 later
             y0_full = [x0; y0; initial_v; psi0; 0; 0]; % State vector
             model_function = @auv_model_log_poly_decel_radius;
             
         case 'LogPoly without Radius'
             % Log Polynomial without deceleration radius parameters
-            poly_a = 2.0; % Polynomial coefficient a
-            poly_b = 2.0; % Polynomial coefficient b
-            poly_c = 1.0; % Polynomial coefficient c
+            poly_a = 4.5; % Polynomial coefficient a
+            poly_b = 4.0; % Polynomial coefficient b
+            poly_c = -8.0; % Polynomial coefficient c
             initial_distance_ref = norm(start - target); % Reference distance
             y0_full = [x0; y0; initial_v; psi0; 0; 0]; % State vector
             model_function = @auv_model_log_poly_decel_noradius;
     end
 
     % Simulation Time
-    tspan = [0 200]; % Simulation time span (s)
+    tspan = [0 500]; % Simulation time span (s)
 
     % Common parameters structure
     common_params = struct('Kp', Kp, 'Ki', Ki, 'Kd', Kd, ...
@@ -152,7 +154,8 @@ function run_simulation(decel_method, psi0, initial_v, initial_a, accel_duration
             common_params.Kd_s = Kd_s;
             common_params.deceleration_radius = deceleration_radius;
         case 'LogPoly with Radius'
-            common_params.deceleration_radius = deceleration_radius;
+            common_params.max_deceleration = max_deceleration;
+            common_params.deceleration_factor = deceleration_factor;
         case 'LogPoly without Radius'
             common_params.poly_a = poly_a;
             common_params.poly_b = poly_b;
@@ -309,21 +312,30 @@ function dydt = auv_model_log_poly_decel_radius(t, y, params)
     % Speed Control - Log Polynomial Law for Deceleration
     dist_to_target = sqrt((x - target(1))^2 + (y_pos - target(2))^2);
     
+    % Dynamic Deceleration Logic from the other script
+    deceleration_distance = params.deceleration_factor * (s^2 / (2 * params.max_deceleration));
+    deceleration_radius = params.docking_radius + deceleration_distance;
+    
     if t < params.accel_duration
         % Phase 1: Initial constant acceleration
         ds = params.initial_a;
-    elseif dist_to_target > params.deceleration_radius
+    elseif dist_to_target > deceleration_radius
         % Phase 2: Cruising at constant speed
         ds = 0;
     else
-        % Phase 3: Deceleration using Log Polynomial Law
+        % Phase 3: Deceleration using Dynamic Log Polynomial Law
         if dist_to_target <= params.docking_radius
             s_desired = 0; % Stop when within docking radius
         else
-            % Log Polynomial Law: v = v0 * ((log(r) - log(rd)) / (log(r0) - log(rd)))^n
-            n = 2; % Polynomial exponent
+            % Dynamically determine the exponent 'n' based on speed.
+            n_min = 2;
+            n_max = 5;
+            speed_ratio = min(1, s / params.cruise_speed);
+            n = n_min + (n_max - n_min) * speed_ratio;
+            
+            % The formula now uses the dynamically calculated deceleration radius
             term = (log(dist_to_target) - log(params.docking_radius)) / ...
-                   (log(params.deceleration_radius) - log(params.docking_radius));
+                   (log(deceleration_radius) - log(params.docking_radius));
             s_desired = params.cruise_speed * max(0, term)^n;
         end
         % Simple proportional control to achieve desired speed
@@ -591,6 +603,10 @@ function plot_comparison(results, target, start, params, decel_method)
     % Plot deceleration zone if applicable
     if isfield(params, 'deceleration_radius')
         plot(target(1) + params.deceleration_radius*cos(theta_circle), target(2) + params.deceleration_radius*sin(theta_circle), '-.', 'Color', '#999900', 'LineWidth', 1.0, 'DisplayName', 'Decel. Zone');
+    elseif isfield(params, 'max_deceleration')
+        deceleration_distance = params.deceleration_factor * (params.cruise_speed^2 / (2 * params.max_deceleration));
+        deceleration_radius = params.docking_radius + deceleration_distance;
+        plot(target(1) + deceleration_radius*cos(theta_circle), target(2) + deceleration_radius*sin(theta_circle), '-.', 'Color', '#999900', 'LineWidth', 1.0, 'DisplayName', 'Decel. Zone (Approx)');
     end
     
     hold off;
@@ -619,6 +635,10 @@ function plot_comparison(results, target, start, params, decel_method)
     % Add reference line for deceleration radius if applicable
     if isfield(params, 'deceleration_radius')
         yline(params.deceleration_radius, 'y-.', 'Decel. Zone');
+    elseif isfield(params, 'max_deceleration')
+        deceleration_distance = params.deceleration_factor * (params.cruise_speed^2 / (2 * params.max_deceleration));
+        deceleration_radius = params.docking_radius + deceleration_distance;
+        yline(deceleration_radius, 'y-.', 'Decel. Zone (Approx)');
     end
     
     hold off; grid on;
@@ -742,13 +762,21 @@ function plot_comparison(results, target, start, params, decel_method)
     % --- NEW PLOTS START HERE ---
 
     % Figure 4: Deceleration Performance Analysis
-    if isfield(params, 'deceleration_radius')
+    if isfield(params, 'deceleration_radius') || isfield(params, 'max_deceleration')
         figure('Name', 'Deceleration Performance Analysis', 'Position', [950, 50, 900, 400]);
 
         % Pre-calculate final speeds and distances
         final_speeds = zeros(1, length(guidance_methods));
         final_distances = zeros(1, length(guidance_methods));
         decel_start_times = NaN(1, length(guidance_methods));
+
+        % Determine the reference deceleration radius for plotting
+        if isfield(params, 'deceleration_radius')
+            decel_plot_radius = params.deceleration_radius;
+        else % isfield(params, 'max_deceleration')
+            deceleration_distance = params.deceleration_factor * (params.cruise_speed^2 / (2 * params.max_deceleration));
+            decel_plot_radius = params.docking_radius + deceleration_distance;
+        end
 
         for i = 1:length(guidance_methods)
             method = guidance_methods{i};
@@ -760,7 +788,7 @@ function plot_comparison(results, target, start, params, decel_method)
             final_distances(i) = dist_error(end);
 
             % Find when deceleration starts
-            idx = find(dist_error <= params.deceleration_radius, 1, 'first');
+            idx = find(dist_error <= decel_plot_radius, 1, 'first');
             if ~isempty(idx)
                 decel_start_times(i) = T(idx);
             end
