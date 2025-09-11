@@ -19,9 +19,9 @@ cruise_speed = initial_v + initial_a * accel_duration;
 
 % AUV and Controller Parameters
 % Heading PID Controller - controls the AUV's direction
-Kp_heading = 3;      % Proportional gain - responds to current error
-Ki_heading = 0.1;     % Integral gain - eliminates steady-state error
-Kd_heading = 0.05;     % Derivative gain - dampens oscillations
+Kp = 1.5;      % Proportional gain - responds to current error
+Ki = 0.05;     % Integral gain - eliminates steady-state error
+Kd = 0.03;     % Derivative gain - dampens oscillations
 
 % Speed PID Controller (for deceleration) - controls AUV's speed
 Kp_speed = 3.0;      % Proportional gain for speed
