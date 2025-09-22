@@ -39,19 +39,17 @@ K_nlg_p = 1.0;     % Proportional gain for the robust NLG heading controller
 % Simulation Time
 tspan = [0 500]; % Simulation time span (s)
 
-% --- ADDITIONS FOR WATER CURRENT EFFECTS ---
 % Current velocity
 v_current_magnitude = 0.5; % Magnitude of water current (m/s)
 % The current direction is perpendicular to the shortest path from start to the initial dock position.
 shortest_path_vector = dock_start_pos - start;
 shortest_path_angle = atan2(shortest_path_vector(2), shortest_path_vector(1));
 current_angle = shortest_path_angle + deg2rad(90);
-% Calculate current velocity components
+% Current velocity components
 vx_current = v_current_magnitude * cos(current_angle);
 vy_current = v_current_magnitude * sin(current_angle);
 v_current = [vx_current; vy_current];
 
-% New final velocity at docking
 % The AUV's final ground velocity should match the dock's velocity.
 % AUV_ground_v_final = v_dock
 % AUV_rel_water_v_final + v_current = v_dock
@@ -59,7 +57,6 @@ v_current = [vx_current; vy_current];
 final_velocity = v_dock - v_current;
 final_speed = norm(final_velocity); % Final magnitude of AUV's speed relative to water
 
-% --------------------------------------------
 % Initial State Vector
 % State: [x; y; s; psi; integral_heading_error; previous_heading_error]
 y0_full = [x0; y0; initial_v; psi0; 0; 0];
@@ -230,10 +227,10 @@ function dydt = auv_model_log_poly_decel(t, y, params)
                 desired_psi = psi;
             end
         end
-        % Calculate heading error (wrapped to [-pi, pi])
+        % Heading error (wrapped to [-pi, pi])
         heading_error = wrapToPi(desired_psi - psi);
         d_integral_heading_error = heading_error;
-        % Calculate derivative of heading error
+        % Derivative of heading error
         derivative_heading_error = heading_error - previous_heading_error;
         % PID control law for heading
         rc = params.Kp * heading_error + params.Ki * integral_heading_error + params.Kd * derivative_heading_error;
@@ -378,7 +375,7 @@ function plot_comparison(T_LOS, Y_LOS, T_carrot, Y_carrot, T_NLG, Y_NLG, ...
     labels = categorical({'LOS', 'Carrot', 'NLG'});
     labels = reordercats(labels, {'LOS', 'Carrot', 'NLG'});
     
-    % Calculate dock trajectory
+    % Dock trajectory
     T_sim_max = max([T_LOS(end), T_carrot(end), T_NLG(end)]);
     T_dock = 0:0.1:T_sim_max;
     dock_x = dock_start_pos(1) + v_dock(1) * T_dock;
@@ -388,21 +385,21 @@ function plot_comparison(T_LOS, Y_LOS, T_carrot, Y_carrot, T_NLG, Y_NLG, ...
     figure('Name', 'Trajectory Comparison', 'Position', [100, 100, 800, 600]);
     hold on;
     
-    % Plot trajectories for each guidance method
+    % Trajectories for each guidance method
     plot(x_LOS, y_LOS, 'r-', 'LineWidth', lw, 'DisplayName', 'LOS');
     plot(x_carrot, y_carrot, 'g-', 'LineWidth', lw, 'DisplayName', 'Carrot');
     plot(x_NLG, y_NLG, 'Color', nlg_color, 'LineWidth', lw, 'DisplayName', 'NLG');
     
-    % Plot dock's path
+    % Dock's path
     plot(dock_x, dock_y, 'b--', 'LineWidth', 1.0, 'DisplayName', 'Dock Path');
     
-    % Plot reference points
+    % Reference points
     plot(start(1), start(2), 'ko', 'MarkerSize', 10, 'LineWidth', 2, 'MarkerFaceColor', 'y', 'DisplayName', 'AUV Start');
     
-    % Plot the dock's starting position with a star marker
+    % Dock's starting position
     plot(dock_start_pos(1), dock_start_pos(2), 'p', 'MarkerSize', 10, 'LineWidth', 2, 'MarkerFaceColor', 'm', 'DisplayName', 'Dock Start');
     
-    % Plot the dock's ending position with a triangle marker
+    % Dock's ending position
     plot(dock_x(end), dock_y(end), '^', 'MarkerSize', 10, 'LineWidth', 2, 'MarkerFaceColor', 'b', 'DisplayName', 'Dock End');
     
     % Add 2D frustum at the end of the simulation
@@ -593,4 +590,5 @@ function cross_track = calculate_cross_track(x_pos, y_pos, start, target)
         pos_vec = [x_pos(i); y_pos(i)] - start;
         cross_track(i) = abs(dot(pos_vec, normal_vec));
     end
+
 end
