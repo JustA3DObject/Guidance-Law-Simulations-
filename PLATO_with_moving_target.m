@@ -48,7 +48,7 @@ docking_radius = 0.1; % Radius for successful docking (m) - considered "docked" 
 
 % Parameters for Dynamic Deceleration
 max_deceleration = 0.5; % Maximum comfortable deceleration rate (m/s^2)
-deceleration_factor = 1.2; % Tuning factor: >1 starts deceleration earlier, <1 later
+deceleration_factor = 1.8; % Tuning factor: >1 starts deceleration earlier, <1 later
 lookahead = 1.0; % Lookahead distance for Carrot Chase and NLG (m) - how far ahead to "look"
 K_nlg_p = 1.0;    % Proportional gain for the robust NLG heading controller
 
@@ -58,7 +58,7 @@ Ki_s = 0.1; % Integral gain for speed control
 Kd_s = 0.05; % Derivative gain for speed control
 
 % Simulation Time
-tspan = [0 37.3]; % Simulation time span (s)
+tspan = [0 50]; % Simulation time span (s)
 
 % Initial State Vector
 % State: [x; y; s; psi; integral_heading_error; previous_heading_error; integral_speed_error; previous_speed_error]
